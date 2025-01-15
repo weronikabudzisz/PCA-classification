@@ -1,0 +1,88 @@
+var trainingSamples = rgb.sampleRegions({
+  collection: train,
+  properties: ['in_modifie'],  // The class label column in your table
+  scale: 10
+});
+
+var bands = [];
+for (var i = 1; i <= 3; i++) {
+  bands.push('b' + i);  // Assuming bands are named as B1, B2, ..., B66
+}
+
+// Train a Random Forest classifier
+var classifier = ee.Classifier.smileRandomForest(50).train({
+  features: trainingSamples,
+  classProperty: 'in_modifie',  // The class label column in your table
+  inputProperties: bands
+});
+
+var classVis = {
+  min: 0,
+  max: 10,
+  palette: ['blue', 'green', 'yellow', 'red', 'purple'] 
+};
+
+// Classify the image
+var classifiedImage = rgb.classify(classifier);
+
+// Define class names and colors (this should match the order of your palette)
+var classNames = train.aggregate_array('in_modifie').distinct(); 
+var palette = ['blue', 'green', 'yellow', 'red', 'purple'];
+
+// Create a legend
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px'
+  }
+});
+
+var legendTitle = ui.Label({
+  value: 'Class Legend',
+  style: {fontWeight: 'bold'}
+});
+legend.add(legendTitle);
+
+// Ensure the classNames are retrieved properly before attempting to generate the legend
+classNames.evaluate(function(classNamesList) {
+  // Loop through the class names and generate the legend
+  for (var i = 0; i < classNamesList.length; i++) {
+    var colorBox = ui.Label({
+      style: {
+        backgroundColor: palette[i],
+        padding: '10px',
+        margin: '2px'
+      }
+    });
+
+    var classLabel = ui.Label({
+      value: classNamesList[i] + ' (' + palette[i] + ')',  // Display color and class name
+      style: {margin: '2px'}
+    });
+
+    // Add the color box and class label to the legend
+    legend.add(ui.Panel([colorBox, classLabel], ui.Panel.Layout.Flow('horizontal')));
+  }
+
+  // Add the legend to the map
+  Map.add(legend);
+});
+
+Map.addLayer(classifiedImage, classVis, 'Classified Image');
+Map.addLayer(train, {color: 'black'}, 'Training sample', false);
+
+// //Accuracy
+var testSamples = rgb.sampleRegions({
+  collection: test,  // Use your test data collection
+  properties: ['in_modifie'],  // The class label column in your test table
+  scale: 10
+});
+
+// Classify the test data using the trained classifier
+var classifiedTestSamples = testSamples.classify(classifier);
+
+// Create confusion matrix
+var confusionMatrix = classifiedTestSamples.errorMatrix('in_modifie', 'classification');
+
+print('Confusion Matrix:', confusionMatrix);
+print('Overall Accuracy:', confusionMatrix.accuracy());
